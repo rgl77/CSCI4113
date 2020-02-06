@@ -41,13 +41,13 @@ mount /dev/new/tmp /tmp_mount_temp
 8.
 cd /home
 cp -pr . /home_mount_temp
-diff /home /home_mount_temp
+diff -qr /home /home_mount_temp
 ## Copying /home files with permissions and hidden files. Checking with diff.
 
 9. 
 cd /tmp 
 cp -pr . /tmp_mount_temp
-diff /tmp /tmp_mount_temp
+diff -qr /tmp /tmp_mount_temp
 ## Copying /tmp files with permissions and hidden files. Checking with diff.
 
 10. 

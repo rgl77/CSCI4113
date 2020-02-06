@@ -1,0 +1,96 @@
+Spring 2020
+CSCI4113
+-----------
+lsblk 
+df -Th
+pvdisplay'
+## Check everything before starting the process
+
+1. pvcreate /dev/sdb
+## Creating physical volume named sdb
+
+2. 
+lsblk 
+df -Th
+pvdisplay'
+## Final check before starting the process
+
+3. vgcreate new /dev/sdb
+## Creating volume group called new
+
+4. 
+lvcreate -L 1G -n tmp new
+lvcreate -L 4G -n home new
+## creating logical volumes
+
+5.
+mkfs.xfs /dev/new/home
+mkfs.xfs /dev/new/tmp
+## Creating file systems on logical volumes
+
+6. 
+mkdir /home_mount_temp
+mkdir /tmp_mount_temp
+## Creating temporary mount points
+
+7.
+mount /dev/new/home /home_mount_temp
+mount /dev/new/tmp /tmp_mount_temp
+## mounting on temporary points
+
+8.
+cd /home
+cp -pr . /home_mount_temp
+diff /home /home_mount_temp
+## Copying /home files with permissions and hidden files. Checking with diff.
+
+9. 
+cd /tmp 
+cp -pr . /tmp_mount_temp
+diff /tmp /tmp_mount_temp
+## Copying /tmp files with permissions and hidden files. Checking with diff.
+
+10. 
+lsblk
+df -Th
+
+11. 
+cd /home
+rm -rf *
+## Create space by deleting in the sda
+
+12.
+cd /tmp
+rm -rf *
+## Create space by deleting in the sda
+
+13. 
+umount /home_mount_temp
+umount /tmp_mount_temp
+## unmount from temporary mount points
+
+14. 
+mount /dev/new/home /home
+mount /dev/new/tmp /tmp
+## mount on the final mount points
+
+15. 
+vim /etc/fstab
+Add the following lines:
+
+/dev/new/home /home 	xfs		nodev	0 0
+/dev/new/tmp /tmp 		xfs		nodev,nosuid,noexec		0 0
+
+## Assigning mounting points for the devices in the fstab manually.
+
+16. 
+
+lsblk
+df -Th
+vgdisplay
+pvdisplay
+## Final check before rebooting
+
+17.
+reboot
+

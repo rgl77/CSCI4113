@@ -1,0 +1,196 @@
+University of Colorado
+Spring 2020
+CSCI4113
+LAB6 - Firewall rules
+Orgil Sugar
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+""The following rules are mostly applied to all machines""
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+This way the iptables will survive reboot:
+------------------------------------------
+systemctl disable firewalld
+systemctl enable iptables
+service iptables save
+systemctl start iptables
+
+The following will help the machine to talk to itself (lo loopback):
+-------------------------------------------------------------------
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+
+The following will allow icmp traffic (we can also use the numbers instead of the names): 
+-------------------------------------
+iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
+iptables -A INPUT -p icmp --icmp-type echo-reply -j ACCEPT
+iptables -A INPUT -p icmp --icmp-type time-exceeded -j ACCEPT
+iptables -A INPUT -p icmp --icmp-type destination-unreachable -j ACCEPT
+
+Using the matching and connection tracking modules leads to stateful connection: 
+ESTABLISHED-meaning that the packet is associated with a connection which has seen packets in both directions
+RELATED-meaning that the packet is starting a new connection, but is associated with an existing connection, such as an FTP data transfer, or an ICMP error.
+--------------------------------------------------------------------------------
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED -j ACCEPT
+
+Allow ssh from specified addresses:
+100.64.0.0/16, 10.21.32.0/24, 198.18.0.0/16
+-------------------------------------------
+iptables -A INPUT -p tcp -s 100.64.0.0/16 --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A INPUT -p tcp -s 10.21.32.0/24 --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A INPUT -p tcp -s 198.18.0.0/16 --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+
+Default deny policy for inbound traffic:
+----------------------------------------
+iptables -P INPUT DROP
+
+Prevent bad actors by dropping them with iptables:
+--------------------------------------------------
+iptables -P FORWARD DROP
+
+Prevent bad actors by kernel:
+-----------------------------
+sysctl -w net.ipv4.ip_forward=0
+
+Save
+----
+service iptables save
+
+Reboot
+------
+reboot
+
+After reboot check whether they are still there
+------------------------------------------------
+iptables -v -L
+
+Also use nmap to check out the open ports:
+------------------------------------------
+nmap ip_address_of_machine
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+""""""""""""""""""""""""""""""""""""""""""""
+""The following are machine specific rules""
+""""""""""""""""""""""""""""""""""""""""""""
+
+100.64.29.2, 100.64.29.5 - Machines B (Carriage) & F (Saddle)
+----------------------------------
+Allowing http/https traffic and they are at the 80 and 443 ports:
+iptables -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+
+100.64.29.3 - Machine C - Platen
+--------------------------------
+1. Default outbound policy is drop:
+iptables -P OUTPUT DROP
+
+2. Allow ftp connections from 100.64.0.0/16:
+iptables -A INPUT -p tcp -s 100.64.0.0/16 --dport 21 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 21 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+3. DNS request:
+iptables -A OUTPUT -p tcp --dport 53 -d 100.64.29.4 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p udp --dport 53 -d 100.64.29.4 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+4. Allow outbound ftp, http, https, and ssh connections to any host.
+iptables -A OUTPUT -p tcp --dport 21 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 80 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 443 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+5. Allow outbound icmp traffic only for icmp-types echo-request, echo-reply (ping), time-exceeded (traceroute), or destination-unreachable.
+iptables -A OUTPUT -p icmp --icmp-type echo-request -j ACCEPT
+iptables -A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
+iptables -A OUTPUT -p icmp --icmp-type time-exceeded -j ACCEPT
+iptables -A OUTPUT -p icmp --icmp-type destination-unreachable -j ACCEPT
+
+
+
+100.64.29.4 - Machine D - Chase
+-------------------------------
+1. Allow DNS queries from any source.
+iptables -A INPUT -p tcp --dport 53 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A INPUT -p udp --dport 53 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+
+10.21.32.2 - Machine E - Roller
+-------------------------------
+1. Restrict connections to the file sharing services (CIFS and SMB) from the 10.21.32.0/24 network only.  CIFS and SMB use port numbers: 135/tcp, 137-139/udp, and 445/tcp.
+iptables -A INPUT -p tcp -s 10.21.32.0/24 --dport 135 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A INPUT -p tcp -s 10.21.32.0/24 --dport 445 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A INPUT -p udp -s 10.21.32.0/24 --dport 137:139 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+2. Allow SSH connections only from hosts in the 10.21.32.0/24 subnet.
+iptables -A INPUT -p tcp -s 10.21.32.0/24 --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+
+100.64.0.29 - Machine A - Router
+--------------------------------
+
+1. Allow the appropriate DHCP traffic to/from 100.64.N.0/24 & 10.21.32.0/24 (So your other machines can get their configs. DHCP port is 67 and it uses udp protocol due to the nature of DHCP.)
+iptables -A INPUT -p udp -s 100.64.29.0/24 --dport 67 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p udp -s 100.64.29.0/24 --dport 67 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A INPUT -p udp -s 10.21.32.0/24 --dport 67 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p udp -s 10.21.32.0/24 --dport 67 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+2. Deny your users access to Facebook from any machine on your network. Double layer security on both output and forward.
+iptables -A FORWARD -p tcp --dport 80 -s 157.240.28.35 -m conntrack --ctstate NEW,ESTABLISHED -j DROP
+iptables -A FORWARD -p tcp --dport 443 -s 157.240.28.35 -m conntrack --ctstate NEW,ESTABLISHED -j DROP
+iptables -A OUTPUT -p tcp --dport 80 -s 157.240.28.35 -m conntrack --ctstate NEW,ESTABLISHED -j DROP
+iptables -A OUTPUT -p tcp --dport 443 -s 157.240.28.35 -m conntrack --ctstate NEW,ESTABLISHED -j DROP
+
+3.Deny your users access to icanhas.cheezburger.com and cheezburger.com.  Again, you need not block all such IP addresses, just the ones you receive from a one-time resolve.
+iptables -A FORWARD -p tcp --dport 80 -s 216.176.186.210 -m conntrack --ctstate NEW,ESTABLISHED -j DROP
+iptables -A FORWARD -p tcp --dport 443 -s 216.176.186.210 -m conntrack --ctstate NEW,ESTABLISHED -j DROP
+iptables -A OUTPUT -p tcp --dport 80 -s 216.176.186.210 -m conntrack --ctstate NEW,ESTABLISHED -j DROP
+iptables -A OUTPUT -p tcp --dport 443 -s 216.176.186.210 -m conntrack --ctstate NEW,ESTABLISHED -j DROP
+
+
+4. Only forward packets to/from machines behind the router, based on the intended purpose of that specific machine.
+
+To Machine B:
+iptables -A FORWARD -p tcp --dport 80 -d 100.64.29.2 -j ACCEPT
+iptables -A FORWARD -p tcp --dport 443 -d 100.64.29.2 -j ACCEPT
+iptables -A FORWARD -p tcp --dport 80 -d 100.64.29.5 -j ACCEPT
+iptables -A FORWARD -p tcp --dport 443 -d 100.64.29.5 -j ACCEPT
+
+Outbound from BDEF:
+iptables -A FORWARD -s 100.64.29.2 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -s 100.64.29.4 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -s 100.64.29.5 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -s 10.21.32.2 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+SSH rule to switches:
+iptables -A FORWARD -p tcp -s 100.64.0.0/16 --dport 22 -d 100.64.29.0/29 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -p tcp -s 10.21.32.0/24 --dport 22 -d 100.64.29.0/29 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -p tcp -s 198.18.0.0/16 --dport 22 -d 100.64.29.0/29 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+SSH Rule that E has:
+iptables -A FORWARD -p tcp -s 10.21.32.0/24 --dport 22 -d 10.21.32.2 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+DNS Rule that D has:
+iptables -A FORWARD -p tcp --dport 53 -d 100.64.29.4 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -p udp --dport 53 -d 100.64.29.4 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+CIFS and SMB rules on E:
+iptables -A FORWARD -p tcp -s 10.21.32.0/24 --dport 135 -d 10.21.32.2 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -p tcp -s 10.21.32.0/24 --dport 445 -d 10.21.32.2 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -p udp -s 10.21.32.0/24 --dport 137:139 -d 10.21.32.2 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+Inbound ftp rule on C:
+iptables -A FORWARD -p tcp -s 100.64.0.0/16 --dport 21 -d 100.64.29.3 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+Outbound ssh rule on C:
+iptables -A FORWARD -p tcp --dport 22 -s 100.64.29.3 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+Rule on C to query dns on D:
+iptables -A FORWARD -p tcp --dport 53 -s 100.64.29.3 -d 100.64.29.4 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -p udp --dport 53 -s 100.64.29.3 -d 100.64.29.4 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+Allow outward http/https traffic from C:
+iptables -A FORWARD -p tcp --dport 80 -s 100.64.29.3 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -p tcp --dport 443 -s 100.64.29.3 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+Allow outward ftp from C:
+iptables -A FORWARD -p tcp --dport 21 -s 100.64.29.3 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
